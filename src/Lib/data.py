@@ -5,6 +5,7 @@ GENERAL
 
 import sqlite3
 import requests
+import re
 from bs4 import BeautifulSoup
 from typing import Any, Iterator, Optional
 
@@ -75,7 +76,18 @@ class Scraper:
 
             main_headers = _extract_main_headers(table_header)
 
-            return _combine_headers(main_headers, over_headers)
+            return _combine_headers(main_headers, over_headers)[1:]
+
+        def drop(self, pattern):
+            self.rows = [
+                row for row in self.rows
+                if not pattern(row)
+            ]
+
+        def format(self, pattern):
+            self.rows = [
+                pattern(row) for row in self.rows
+            ]
 
 
     def __init__(self):
@@ -106,35 +118,38 @@ class Scraper:
         table_html = self.soup.find(id=table_id)
         return self.Table(table_html) if table_html else None
 
-class DataBase:
+
+class DataBase: # TODO
     """
     Interface for interacting with and manipulating a database
     """
     def __init__(self, database):
-
-        # Create a connection to the database (or create it if it doesn't exist)
         self.conn = sqlite3.connect(database)
-
-        # Create a cursor object to execute SQL commands
         self.cursor = self.conn.cursor()
 
-        
     def create(self, name, cols):
-        # Create a table called 'users' with columns 'id', 'name', and 'age'
-        self.cursor.execute(f'CREATE TABLE {name} {cols}')
+        self.cursor.execute(f'CREATE TABLE IF NOT EXISTS {name} {cols}')
+        self.conn.commit()
 
+    def read(self, query):
+        self.cursor.execute(query)
+        return self.cursor.fetchall()
 
-    def read(self):
-        pass
+    def write(self, query, values):
+        self.cursor.execute(query, values)
+        self.conn.commit()
 
-    def write(self):
-        pass
+    def update(self, query, values):
+        self.cursor.execute(query, values)
+        self.conn.commit()
+
+    def delete(self, query, values):
+        self.cursor.execute(query, values)
+        self.conn.commit()
 
     def close(self):
-        """
-        Close the connection
-        """
         self.conn.close()
+
 
 
 class Preprocessor:
@@ -152,6 +167,48 @@ class Handler:
     def __init__(self):
         pass
 
+"""
+Special Scrapers
+"""
+
+class NCAABTeamScraper(Scraper):
+
+    def __init__(self, year):
+        """
+        Initializes the NCAABTeamScraper with a specific year.
+        Sets up the scraper to point to the NCAAB teams URL for the given year
+        and retrieves the team statistics table.
+        """
+        self.ncaabTeamsUrl = f'https://www.sports-reference.com/cbb/seasons/men/{year}-school-stats.html'
+        tableId = 'basic_school_stats'
+
+        super().__init__()
+        self.visit(self.ncaabTeamsUrl)
+        self.table = self.getTable(tableId)
+    
+    def getTable(self, tableID: str) -> Scraper.Table:
+        """
+        Retrieves and returns a table by its ID after applying specific filtering.
+        """
+        table = super().getTable(tableID)
+
+        # drop empty rows
+        pattern = lambda x: x.th.get('scope') != 'row'
+        table.drop(pattern)
+
+        # format table data
+        pattern = lambda x: [str(data.text) for data in x.find_all('td') if data.text]
+        table.format(pattern)
+
+        return table
+    
+    def getTeamNames(self):
+        return [
+            row[0] for row in self.table.rows
+        ]
+
+
+    
 
 """
 SPECIAL HANDLERS

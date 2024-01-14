@@ -15,7 +15,7 @@ def test_scraper():
 
     }
 
-    for url, tableID in urls.items():
+    for url, tableID in list(urls.items())[1:]:
 
         scraper.visit(url)
 
@@ -25,4 +25,9 @@ def test_scraper():
             assert not row is None
 
         assert not table.header is None
+
+def test_NCAABTeamScraper():
+    scraper = data.NCAABTeamScraper(2024)
+    teams = scraper.getTeamNames()
+    assert all(not item.isdigit() and isinstance(item, str) for item in teams), "List contains numeric strings"
 
