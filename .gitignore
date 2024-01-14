@@ -1,9 +1,19 @@
-env
-build
-dist
-**/__pycache__/
-*__init__.py
-datasets
-.pytest_cache
-*.vscode
-temp
+# Virtual environment
+env/
+
+# Build outputs
+build/
+dist/
+
+# Caches
+__pycache__/
+.pytest_cache/
+
+# IDE settings
+.vscode/
+
+# Miscellaneous
+temp/
+
+# Data
+datasets/
