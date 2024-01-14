@@ -5,5 +5,5 @@ dist
 *__init__.py
 datasets
 .pytest_cache
-.vscode
+*.vscode
 temp
