@@ -4,3 +4,6 @@ dist
 **/__pycache__/
 *__init__.py
 datasets
+.pytest_cache
+.vscode
+temp
