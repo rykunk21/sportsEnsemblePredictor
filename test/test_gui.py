@@ -1,4 +1,4 @@
-from Lib import gui
+from src.Lib import gui
 
 testGUI = False
 

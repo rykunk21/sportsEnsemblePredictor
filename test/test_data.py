@@ -91,4 +91,6 @@ def test_DataBase():
 
     assert not db.exists('random')
 
+    print(db.tables())
+
 

@@ -1,4 +1,4 @@
-from Lib import simulation
+from src.Lib import simulation
 
 def test_simulation():
     # Test with positive numbers
