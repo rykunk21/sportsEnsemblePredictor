@@ -73,24 +73,66 @@ def test_NCAABTeamScraper():
 
     assert db.exists('ncaabTeams')
 
-    print(db.tables())
-
 def test_DataBase():
     db = data.DataBase('./test/resources/testDB.db')
+    db.clear()
+
+def test_DataBaseSchema():
+    db = data.DataBase('./test/resources/testDB.db')
+    db.clear()
 
     tableParams = {
         'ID': 'INT PRIMARY KEY',
         'Name': 'VARCHAR(255) NOT NULL',
         'Age': 'INT NOT NULL'
     }
-    table = db.Table('test', tableParams)
     
-    db.create(table)
+    schema = db.create('testSchema')
 
-    assert db.exists('test')
+    schema.addview('testView')
+    assert schema.views.exists('testView')
 
-    assert not db.exists('random')
 
-    print(db.tables())
+    schema.addTable('test', tableParams)
+    assert schema.dropTable('test')
+
+    table = schema.addTable('test', tableParams)
+    
+
+def test_DataBaseTable():
+    db = data.DataBase('./test/resources/testDB.db')
+    db.clear()
+
+    tableParams = {
+        'ID': 'INT PRIMARY KEY',
+        'Name': 'VARCHAR(255) NOT NULL',
+        'Age': 'INT NOT NULL'
+    }
+    
+    schema = db.create('testSchema')
+
+    schema.addview('testView')
+    assert schema.views.exists('testView')
+
+
+    schema.addTable('test', tableParams)
+    assert schema.dropTable('test')
+
+    table = schema.addTable('test', tableParams)
+
+    row = table.rowTemplate()
+
+    row['ID'] = 12
+    row['Name'] = 'Example Location'
+    row['Age'] = 50
+
+    table.add(row)
+
+
+    row = table.get(12)
+
+    assert row['Name'] == 'Example Location'
+    assert row['Age'] == 50
+
 
 

@@ -162,6 +162,12 @@ class DataBase: # TODO
         # initial table assignment
         
 
+    def clear(self):
+        for table in self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall():
+            self.cursor.execute(f"DROP TABLE {table[0]};")
+        self.conn.commit()
+
+        
     def exists(self, table):
         return table in self.tableNames()
 
@@ -228,6 +234,7 @@ class DataBase: # TODO
             tables[i] = self.Table(row, cols)
 
         return tables
+
 
 
 
