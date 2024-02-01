@@ -68,8 +68,8 @@ def test_NCAABTeamScraper():
         'TotalsTOV': 'DECIMAL(5, 2)',
         'TotalsPF': 'DECIMAL(5, 2)'
     }
-    table = db.Table('ncaabTeams', tableParams)
-    db.create(table)
+    schema = db.create('ncaabTest')
+    table = schema.addTable('test', tableParams)
 
     assert db.exists('ncaabTeams')
 
@@ -90,15 +90,16 @@ def test_DataBaseSchema():
     schema = db.create('testSchema')
 
     schema.addview('testView')
-    assert schema.views.exists('testView')
+    assert 'testView' in schema.views
 
 
     schema.addTable('test', tableParams)
     assert schema.dropTable('test')
+    assert not schema.dropTable('Doesnt_Exist')
 
-    table = schema.addTable('test', tableParams)
+
+    schema = db.create('testSchema')
     
-
 def test_DataBaseTable():
     db = data.DataBase('./test/resources/testDB.db')
     db.clear()
@@ -112,7 +113,7 @@ def test_DataBaseTable():
     schema = db.create('testSchema')
 
     schema.addview('testView')
-    assert schema.views.exists('testView')
+    assert 'testView' in schema.views
 
 
     schema.addTable('test', tableParams)
@@ -120,14 +121,21 @@ def test_DataBaseTable():
 
     table = schema.addTable('test', tableParams)
 
-    row = table.rowTemplate()
+    row = table.template()
 
     row['ID'] = 12
     row['Name'] = 'Example Location'
     row['Age'] = 50
 
-    table.add(row)
+    try:
+        row['Doesnt_exist'] = None
+        row['ID'] = 'Invalid type'
+        assert False
 
+    except:
+        assert True
+
+    table.add(row)
 
     row = table.get(12)
 

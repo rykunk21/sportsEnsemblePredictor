@@ -5,9 +5,9 @@ GENERAL
 
 import sqlite3
 import requests
-import re
+from collections import UserDict
 from bs4 import BeautifulSoup
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, TypeVar, Dict
 
 class Scraper:
 
@@ -67,7 +67,11 @@ class Scraper:
                 ]
 
             def _clean_header_values(header):
-                illegal_characters = ['.', '-', ' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '=', '{', '}', '[', ']', '|', '\\', '/', '?', '<', '>', "'", '¥', '¢', '£', '¬']
+                illegal_characters = [
+                    '.', '-', ' ', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', 
+                    '+', '=', '{', '}', '[', ']', '|', '\\', '/', '?', '<', '>', "'", '¥', 
+                    '¢', '£', '¬'
+                ]
                 for i, _ in enumerate(header):
                     for char in illegal_characters:
                         header[i] = header[i].replace(char, '')
@@ -140,57 +144,141 @@ class DataBase: # TODO
     """
     Interface for interacting with and manipulating a database
     """
+    class Schema:
+
+        views = []
+        tables = []
+        
+        def __init__(self, conn: sqlite3.Connection) -> None:
+            self.conn = conn
+            self.cursor = self.conn.cursor()
+        
+        def addview(self, name: str) -> bool:
+            self.cursor.execute(f'''
+                CREATE VIEW IF NOT EXISTS {name} AS
+                SELECT * FROM my_table WHERE 1=0;
+            ''')
+
+            if not name in self.views:
+                self.views.append(name)
+            self.conn.commit()
+        
+        def addTable(self, name: str, params: dict) -> 'DataBase.Table':
+            
+            table = DataBase.Table(name, params, self.conn)
+
+            self.cursor.execute(f'CREATE TABLE {table};')
+            
+            if not name in self.tables:
+                self.tables.append(name)
+
+            return table
+
+        def dropTable(self, name: str) -> bool:
+            
+            if not name in self.tables:
+                return False
+            
+            self.cursor.execute(f'DROP TABLE {name};')
+            return True
 
     class Table:
-        def __init__(self, name, cols) -> None:
+
+        T = TypeVar('T', bound=Dict[str, Any])
+
+        class Row(dict):
+            def __init__(self, params: dict):
+                super().__init__(params)
+
+            def __setitem__(self, key: str, value: Any):
+                if key not in self.keys():
+                    raise KeyError(f"Key '{key}' not found in table definition.")
+
+                sql_type = self[key]
+                if not isinstance(value, (int, str)):
+                    raise TypeError(f"Value for key '{key}' must be an int or str, not {type(value)}.")
+
+                if sql_type.startswith('INT'):
+                    if not isinstance(value, int):
+                        raise TypeError(f"Value for key '{key}' must be an int, not {type(value)}.")
+                elif sql_type.startswith('VARCHAR'):
+                    if not isinstance(value, str):
+                        raise TypeError(f"Value for key '{key}' must be a str, not {type(value)}.")
+
+                super().__setitem__(key, value)
+            
+            def __str__(self) -> str:
+                out = ', '.join([f"'{value}'" if isinstance(value, str) else str(value) for value in self.values()])
+                return out.lstrip()
+                                    
+
+
+        def __init__(self, name: str, cols: dict, conn: sqlite3.Connection) -> None:
             self.name = name
             self.cols = cols
+            self.conn = conn
+            self.cursor = conn.cursor()
 
-        def __str__(self):
+        def __str__(self) -> str:
             col_str =  ', '.join([f'{key} {value}' for key, value in self.cols.items()])
             return f'{self.name} ({col_str})'
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return self.__str__()
-
-
-    def __init__(self, database, **kwargs):
-
         
+
+        def template(self) -> dict:
+            """
+            returns a template for the specific table
+            useful for when you dont know the values of the header
+            """
+            return self.Row(self.cols)
+
+        def add(self, row: Row) -> None:
+            """
+            
+            """
+            self.cursor.execute(f'INSERT INTO {self.name} VALUES ({row});')
+
+
+        def get(self, ID: int) -> Row:
+
+            row = self.Row(self.cols)
+
+            self.cursor.execute(f'SELECT * FROM {self.name} WHERE ID = \'{ID}\';')
+            data = self.cursor.fetchone()
+
+            row.update({k: v for k, v in zip(row.keys(), data)})
+            
+            return row
+
+        def getAny(self, condition: str) -> Row:
+            pass
+
+    def __init__(self, database: str) -> None:
         self.conn = sqlite3.connect(database)
         self.cursor = self.conn.cursor()
-        # initial table assignment
-        
 
-    def clear(self):
+
+    def clear(self) -> None:
         for table in self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall():
             self.cursor.execute(f"DROP TABLE {table[0]};")
         self.conn.commit()
 
-        
     def exists(self, table):
         return table in self.tableNames()
 
-    def create(self, table):
-        self.cursor.execute(f'CREATE TABLE IF NOT EXISTS {table}')
-        self.conn.commit()
+    def create(self, schema: str) -> Schema:
+        """
+        Creates a new schema
+        """
+        return self.Schema(self.conn)
 
     def retreive(self, query=None):
         if query is None:
             query = 'SELECT * FROM sqlite_master WHERE type="table"'
         self.cursor.execute(query)
         return self.cursor.fetchall()
-
-    def insert(self, values, table=None):
-        self.conn.commit()
-
-    def update(self, query, values):
-        self.cursor.execute(query, values)
-        self.conn.commit()
-
-    def delete(self, query, values):
-        self.cursor.execute(query, values)
-        self.conn.commit()
 
     def close(self):
         self.conn.close()
