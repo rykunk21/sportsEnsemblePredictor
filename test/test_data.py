@@ -29,11 +29,15 @@ def test_scraper():
         assert not table.header is None
 
 def test_NCAABTeamScraper():
+
     scraper = data.NCAABTeamScraper(2024)
     teams = scraper.getTeamNames()
 
     assert all(not item.isdigit() and isinstance(item, str) for item in teams), "List contains numeric strings"
     db = data.DataBase('./test/resources/testSchool.db')
+    db.clear()
+
+
     tableParams = {
         'School': 'VARCHAR(255)',
         'OverallG': 'INT',
@@ -71,7 +75,7 @@ def test_NCAABTeamScraper():
     schema = db.create('ncaabTest')
     table = schema.addTable('test', tableParams)
 
-    assert db.exists('ncaabTeams')
+    assert db.exists('test')
 
 def test_DataBase():
     db = data.DataBase('./test/resources/testDB.db')
