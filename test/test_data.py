@@ -1,6 +1,10 @@
 from src.Lib import data
 from bs4 import BeautifulSoup
-import os
+import matplotlib.pyplot as plt
+import numpy as np
+
+from scipy.optimize import curve_fit
+from scipy.stats import poisson
 
 
 def test_data():
@@ -12,8 +16,10 @@ def test_scraper():
     
     
     urls = {
+        'https://www.sports-reference.com/cbb/players/tyson-walker-1/gamelog/2024/':'gamelog',
         'https://www.sports-reference.com/cbb/schools/michigan-state/men/2024-gamelogs.html': 'sgl-basic_NCAAM',
         'https://www.sports-reference.com/cbb/seasons/men/2024-school-stats.html': 'basic_school_stats'
+    
 
     }
 
@@ -76,6 +82,17 @@ def test_NCAABTeamScraper():
     table = schema.addTable('test', tableParams)
 
     assert db.exists('test')
+
+def test_NCAABPlayerScraper():
+
+    scraper = data.NCAABPlayerScraper('tyson-walker')
+    table = scraper.getTable()
+    points = [int(row[8]) for row in table.rows]
+
+def test_NCAABRosterScraper():
+    scraper = data.NCAABRosterScraper('michigan-state')
+    roster = scraper.getRoster()
+    links = scraper.getLinks()
 
 def test_DataBase():
     db = data.DataBase('./test/resources/testDB.db')

@@ -8,11 +8,15 @@ import requests
 from collections import UserDict
 from bs4 import BeautifulSoup
 from typing import Any, Iterator, TypeVar, Dict
+import datetime
+import util
+
+
 
 class Scraper:
 
     class Table:
-        def __init__(self, htmlContent: Any) -> None:
+        def __init__(self, htmlContent: Any = None) -> None:
             """
             Initializes the object with HTML content, parses it, and prepares row iteration.
             """
@@ -61,6 +65,12 @@ class Scraper:
 
             def _combine_headers(over_headers, main_header):
                 """Combines over headers and main headers, appending over header text to main headers."""
+                if not over_headers:
+                    return [
+                        (f'{main_header}' if main_header else '')
+                        for i, main_header in enumerate(main_header)
+                    ]
+
                 return [
                     over_headers + (f'_{main_header[i]}' if main_header[i] else '')
                     for i, over_headers in enumerate(over_headers)
@@ -88,7 +98,7 @@ class Scraper:
 
             main_headers = _extract_main_headers(table_header)
 
-            combined_headers = _combine_headers(over_headers, main_headers)[1:] # eliminate id at position 0
+            combined_headers = _combine_headers(over_headers, main_headers) # eliminate id at position 0
 
             return _clean_header_values(combined_headers)
 
@@ -103,6 +113,13 @@ class Scraper:
                 pattern(row) for row in self.rows
             ]
 
+        def get(self, col):
+
+            index = self.header.index(col)
+
+            return [
+                row[index] for row in self.rows
+            ]
 
         def __str__(self):
             return '\n'.join([str(self.header), '\n'.join([str(row) for row in self.rows])])
@@ -123,6 +140,18 @@ class Scraper:
         """
         try:
             response = requests.get(url)
+
+            if not 200 <= response.status_code < 300:
+                if response.status_code == 429:
+                    retryAfter = response.headers.get('Retry-After')
+                    dt = datetime.datetime.fromtimestamp(int(retryAfter))
+                    raise Exception(f'Visiting url raised error {response.status_code}: {response.reason}. Try after {dt.hour}:{dt.minute}')
+
+                raise Exception(f'Visiting url raised error {response.status_code}: {response.reason}')
+            
+            
+
+
             response.raise_for_status()
             self.soup = BeautifulSoup(response.text, 'html.parser')
         except requests.RequestException as e:
@@ -324,9 +353,6 @@ class DataBase: # TODO
         return tables
 
 
-
-
-
 class Preprocessor:
     """
     Class to provide general preprocessing tasks
@@ -339,8 +365,10 @@ class Handler:
     """
     Class to provide general data handling tasks
     """
-    def __init__(self):
-        pass
+    def __init__(self, db):
+        self.db = DataBase(db)
+
+
 
 """
 Special Scrapers
@@ -382,8 +410,110 @@ class NCAABTeamScraper(Scraper):
             row[0] for row in self.table.rows
         ]
 
+class NCAABPlayerScraper(Scraper):
+        def __init__(self, playerName):
+            self.playerName = playerName
+            super().__init__()
 
+            self.playerUrl = f'https://www.sports-reference.com/cbb/players/{playerName}/gamelog/2024/'
+
+            self.tableID = 'gamelog'
+            
+            self.visit(self.playerUrl)
+        
+
+        def getTable(self) -> Scraper.Table:
+
+            table = super().getTable(self.tableID)
+
+            if not table:
+                return Scraper.Table()
+            # drop empty rows
+            pattern = lambda x: x.th.get('scope') != 'row'
+            table.drop(pattern)
+
+
+            pattern = lambda x: [str(data.text) for data in x.find_all('td')]
+            table.format(pattern)
+
+            pattern = lambda x: ["H" if not data else data for data in x]
+            table.format(pattern)
+            # format table data
+            
+            pattern = lambda x: ["" if data=='H' and i == len(x) - 1 else data for i, data in enumerate(x)]
+            table.format(pattern)
+
+            return table
+
+class NCAABRosterScraper(Scraper):
+    def __init__(self, teamName):
+        self.teamName = teamName
+        super().__init__()
+        self.rosterURL = f'https://www.sports-reference.com/cbb/schools/{self.teamName}/men/2024.html'
+        self.tableID = 'roster'
+
+        self.visit(self.rosterURL) 
+
+        self.table = self.getTable()
+
+    def getTable(self) -> Scraper.Table:
+
+        table = super().getTable(self.tableID)
+
+        if not table:
+            return Scraper.Table()
+        # drop empty rows
+        pattern = lambda x: x.th.get('scope') != 'row'
+        table.drop(pattern)
+
+        pattern = lambda x: [str(data.text) for data in x.find_all(['th', 'td'])]
+        table.format(pattern) 
+
+        return table
     
+    def getLinks(self) -> Scraper.Table:
+        table = super().getTable(self.tableID)
+
+        if not table:
+            return Scraper.Table()
+        # drop empty rows
+        pattern = lambda x: x.th.get('scope') != 'row'
+        table.drop(pattern)
+
+        pattern = lambda x: [(str(data.text), 'https://www.sports-reference.com' + data['href'])for data in x.find_all('a', limit=1)]
+        table.format(pattern) 
+
+        return table
+    
+    def getPlayerPrefix(self) -> Scraper.Table:
+        links = self.getLinks()
+
+        pattern = lambda x: [data[1]  for data in x]
+        links.format(pattern)
+
+        pattern = lambda x: [data.split('/')[-1] for data in x]
+        links.format(pattern)
+
+        pattern = lambda x: [data.split('.')[0] for data in x]
+        links.format(pattern)
+
+        return [link[0] for link in links.rows]
+    
+
+    def getRoster(self) -> Scraper.Table:
+
+        roster = []
+        for row in self.table.rows:
+            roster.append(row[0])
+        
+        return roster
+
+    def getRosterLinks(self) -> Scraper.Table:
+        links = []
+        for row in self.getLinks().rows:
+            links.append(row[0])
+
+        return links
 
 """
 SPECIAL HANDLERS
@@ -406,11 +536,27 @@ class simHandler(Handler):
     """
     Data handler for simulation
     """
+    db = None
+
+
     class simPreprocessor(Preprocessor):
         pass
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, db=None):
+
+        if not db:
+            super().__init__(self.db)
+        else:
+            super().__init__(db)
+
+
+
+    @classmethod
+    def getTeam(cls, teamName: str) -> util.Team:
+        """
+        Query the database for a particular team
+        """
+        return teamName
 
 
 class powerHandler(Handler):
