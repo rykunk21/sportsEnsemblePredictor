@@ -8,13 +8,14 @@ import requests
 from collections import UserDict
 from bs4 import BeautifulSoup
 from typing import Any, Iterator, TypeVar, Dict
-import datetime
+from datetime import datetime
 
 from . import util
 
 import pickle
 import os
 import json
+import numpy as np
 
 
 class Scraper:
@@ -378,7 +379,7 @@ class Handler:
 Special Scrapers
 """
 
-class NCAABTeamScraper(Scraper):
+class NCAABLeagueScraper(Scraper):
 
     def __init__(self, year):
         """
@@ -413,6 +414,83 @@ class NCAABTeamScraper(Scraper):
         return [
             row[0] for row in self.table.rows
         ]
+
+class NCAABTeamScraper(Scraper):
+    def __init__(self, teamName):
+        super().__init__()
+        self.url = f'https://www.sports-reference.com/cbb/schools/{teamName}/men/2024-gamelogs.html'
+        self.teamName = teamName
+        self.table_id = 'sgl-basic_NCAAM'
+        self.visit(self.url)
+        self.table = self.getTable()
+        self.links = self.gameLinks()
+
+    def getTable(self) -> Scraper.Table:
+        table = super().getTable(self.table_id)
+
+        pattern = lambda x: x.th.get('scope') != 'row'
+        table.drop(pattern)
+        
+
+        pattern = lambda x: [str(data.text) for data in x.find_all('td')]
+        table.format(pattern)
+
+        pattern = lambda x: ["H" if not data else data for data in x]
+        table.format(pattern)
+
+        return table
+
+    def gameLinks(self):
+        baseUrl = 'https://www.sports-reference.com'
+
+        table = super().getTable(self.table_id)
+
+        pattern = lambda x: x.th.get('scope') != 'row'
+        table.drop(pattern)
+
+        stats = ['date', 'opp_team_id']
+
+        pattern = lambda x: [data for data in x.find_all('td') if data['data-stat'] in stats]
+        table.format(pattern)
+
+        pattern = lambda x: x[0].find('a') is None
+        table.drop(pattern)
+
+        pattern = lambda x: [
+            (datetime.strptime(data.text, '%Y-%m-%d').date(), baseUrl + data.find('a')['href']) 
+            if data['data-stat'] == 'date' else data.text for data in x
+        ]
+        table.format(pattern)
+    
+        return table
+
+    def getSchedule(self):
+
+        current_date = datetime.now().date()
+        past = []
+        future = []
+        for row in self.table.rows:
+
+            date_str = row[0]
+            # Convert the date string to a datetime object
+            date_object = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+            # Check if the date has already happened
+            if date_object <= current_date:
+                past.append(row)
+                # Add your code here for the dates that have already happened
+            else:
+                future.append(row)
+
+        return (past, future)
+
+
+    def getNumGames(self):
+        return len(self.getSchedule()[0]) 
+    
+
+    def getGame(self, date, game):
+        pass
 
 class NCAABPlayerScraper(Scraper):
         def __init__(self, playerName, link=None):
@@ -645,7 +723,7 @@ class simHandler(Handler):
         pass
 
     @classmethod
-    def getTeam(cls, teamName: str) -> util.Team:
+    def getTeam(cls, teamName: str) -> dict[str, list[list[str]]]:
         """
         Query the database for a particular team
         """
