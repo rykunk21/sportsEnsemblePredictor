@@ -7,6 +7,14 @@ from scipy.optimize import curve_fit
 from scipy.stats import poisson
 
 
+def test_LineScraper():
+    
+    ls = data.LineScraper()
+    if ls._teams_are_set():
+        spread = ls.spread()
+        home_ml_odds, away_ml_odds = ls.getMoneyLineOdds()
+        home_spread_odds, away_spread_odds = ls.getSpreadOdds()
+
 def test_data():
     # Test with positive numbers
     assert True
@@ -16,10 +24,11 @@ def test_scraper():
     
     
     urls = {
+        'https://www.sports-reference.com/cbb/seasons/men/2024-school-stats.html': 'basic_school_stats',
         'https://www.sports-reference.com/cbb/players/tyson-walker-1/gamelog/2024/':'gamelog',
-        'https://www.sports-reference.com/cbb/schools/michigan-state/men/2024-gamelogs.html': 'sgl-basic_NCAAM',
-        'https://www.sports-reference.com/cbb/seasons/men/2024-school-stats.html': 'basic_school_stats'
-    
+        'https://www.sports-reference.com/cbb/schools/michigan-state/men/2024-gamelogs.html': 'sgl-basic_NCAAM'
+        
+
 
     }
 
@@ -85,7 +94,7 @@ def test_NCAABTeamScraper():
 
 def test_NCAABPlayerScraper():
 
-    scraper = data.NCAABPlayerScraper('tyson-walker')
+    scraper = data.NCAABPlayerScraper('tyson-walker-1')
     table = scraper.getTable()
     points = [int(row[8]) for row in table.rows]
 
@@ -162,6 +171,4 @@ def test_DataBaseTable():
 
     assert row['Name'] == 'Example Location'
     assert row['Age'] == 50
-
-
 

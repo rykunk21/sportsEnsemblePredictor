@@ -1,66 +1,163 @@
 import tkinter as tk
+from tkinter import ttk
+from tkinter import scrolledtext
 
-import tkinter as tk
-from tkinter import ttk  # For advanced widgets like tabs
+import numpy as np
+from src.Lib import data, simulation, util
+
+
+
+class PlaceholderEntry(tk.Entry):
+    def __init__(self, master=None, placeholder="", color='grey', *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
+        self.placeholder = placeholder
+        self.placeholder_color = color
+        self.default_fg_color = self['fg']
+
+        self.bind("<FocusIn>", self.focus_in)
+        self.bind("<FocusOut>", self.focus_out)
+
+        self.put_placeholder()
+
+    def put_placeholder(self):
+        self.insert(0, self.placeholder)
+        self['fg'] = self.placeholder_color
+
+    def focus_in(self, _):
+        if self.get() == self.placeholder:
+            self.delete('0', 'end')
+            self['fg'] = self.default_fg_color
+
+    def focus_out(self, _):
+        if not self.get():
+            self.put_placeholder()
 
 class GUI:
     background = "#2F3842"
 
     def __init__(self):
-        # initialize window
+        self.parameters = {}
+
         self.window = tk.Tk()
         self.window.title("Auto Gambler")
+        self.window.geometry("500x750")
 
-        # Set the default window size
-        self.window.geometry("500x500")  # Set the size to 820x768 (width x height)
+        self.create_label("The Model", 20)
 
+        frame = tk.Frame(self.window)
+        frame.pack()
 
-        # Configure grid layout for window
-        self.window.columnconfigure(0, weight=1)
-        self.window.rowconfigure(0, weight=1)
+        counter_gen = self.counter()
 
-        # Create a central frame
-        center_frame = tk.Frame(self.window, bg=self.background)
-        center_frame.grid(sticky="nsew")
+        labels = ["Home ML Probability", "Home Spread Probability", "Away ML Probability", "Away Spread Probability", "Home Team", "Away Team"]
+        for label in labels:
+            self.create_label_entry_pair(frame, label, counter_gen)
 
-        # Configure grid layout for center_frame
-        center_frame.columnconfigure(0, weight=1)
-        center_frame.rowconfigure(1, weight=1)
+        self.text_output = scrolledtext.ScrolledText(self.window, wrap=tk.WORD, width=50, height=10)
+        self.text_output.pack()
 
-        # Label "The Model"
-        model_label = tk.Label(center_frame, text="The Model", bg=self.background, fg="white", font=("Helvetica", 16))
-        model_label.grid(row=0, column=0, pady=(20, 0))
-
-        # Tabs for sports
-        tab_control = ttk.Notebook(center_frame)
-        nfl_tab = ttk.Frame(tab_control)
-        ncaab_tab = ttk.Frame(tab_control)
-        nhl_tab = ttk.Frame(tab_control)
-
-        tab_control.add(nfl_tab, text='NFL')
-        tab_control.add(ncaab_tab, text='NCAAB')
-        tab_control.add(nhl_tab, text='NHL')
-
-        tab_control.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
-
-        # Input field and Submit button inside each tab
-        for tab in [nfl_tab, ncaab_tab, nhl_tab]:
-            self.input_field = tk.Entry(tab, width=60)
-            self.input_field.grid(row=0, column=0, padx=10, pady=10)
-
-            submit_button = tk.Button(tab, text="Submit", command=self.submit_button_callback)
-            submit_button.grid(row=1, column=0, padx=10, pady=10)
-
-
-        # Configure default background color
         self.window.configure(bg=self.background)
 
+    def create_label(self, text, font_size):
+        label = tk.Label(self.window, text=text, bg=self.background, fg="white", font=("Helvetica", font_size))
+        label.pack()
+
+    def create_label_entry_pair(self, frame, label_text, counter_gen):
+        pair_frame = tk.Frame(frame, pady=10)
+        pair_frame.rowconfigure(0, weight=1)
+        pair_frame.rowconfigure(1, weight=1)
+
+        row, col = next(counter_gen)
+        label = tk.Label(pair_frame, text=label_text, bg=self.background, fg="white", font=("Helvetica", 16))
+        label.grid(row=0, pady=(0, 5), sticky=tk.W)
+
+        entry_placeholder = label_text.lower()
+        entry_var = tk.StringVar()
+        entry_var.set(entry_placeholder)
+        entry = tk.Entry(pair_frame, textvariable=entry_var)
+        entry.grid(row=1, pady=(5, 10), sticky=tk.W)
+
+        # Bind the entry widget to remove the placeholder text on focus
+        entry.bind("<FocusIn>", lambda event: entry_var.set(''))
+
+        pair_frame.grid(row=row, column=col, sticky=tk.W + tk.E)
+
+    def counter(self):
+        for count in range(1, 7):
+            if count < 1 or count > 6:
+                raise ValueError("Count should be between 1 and 6")
+
+            row = (count - 1) // 2
+            column = (count - 1) % 2
+            yield row, column
+        
     def change_background_color(self, color):
         self.window.configure(bg=color)
 
-    def submit_button_callback(self):
-        hex_value = self.input_field.get()
-        self.change_background_color(hex_value)
+    def submit_button_callback(self, spread, home_ml, home_spread, away_ml, away_spread, home_team, away_team):
+        try:
+            spread_val = float(spread.get())
+            home_ml_prob_val = float(home_ml.get())
+            home_spread_prob_val = float(home_spread.get())
+            away_ml_prob_val = float(away_ml.get())
+            away_spread_prob_val = float(away_spread.get())
+            home_team_val = home_team.get()
+            away_team_val = away_team.get()
+
+            self.parameters = {
+                "SPREAD": spread_val,
+                "HOMEMLPROB": home_ml_prob_val,
+                "HOMESPREADPROB": home_spread_prob_val,
+                "AWAYMLPROB": away_ml_prob_val,
+                "AWAYSPREADPROB": away_spread_prob_val,
+                "HOME": home_team_val,
+                "AWAY": away_team_val
+            }
+
+            # Clear the text output
+            self.text_output.delete(1.0, tk.END)
+
+            self.run_function_and_display_output()
+
+        except ValueError:
+            self.text_output.insert(tk.END, "Invalid input. Please enter valid numerical values.\n")
+            self.text_output.yview(tk.END)
+
+    def run_function_and_display_output(self):
+
+        SPREAD = self.parameters["SPREAD"]
+        HOMEMLPROB = self.parameters["HOMEMLPROB"]
+        HOMESPREADPROB = self.parameters["HOMESPREADPROB"]
+        AWAYMLPROB = self.parameters["AWAYMLPROB"]
+        AWAYSPREADPROB = self.parameters["AWAYSPREADPROB"]
+        HOME = self.parameters["HOME"]
+        AWAY = self.parameters["AWAY"]
+
+        home = data.simHandler.getTeam(HOME)
+        away = data.simHandler.getTeam(AWAY)
+
+        game = util.Game.NCAAB(home, away)
+
+        sim = simulation.MonteCarlo(game)
+        prob, spreads = sim.run(10000)
+
+        spread_prob = sim.probability_of_value(spreads, SPREAD)
+
+        output = f'{game.home} ML: {prob:.2f}\nSpread: {np.mean(spreads)}\n\n'
+        output += f'Home ML: {prob - self.convertline(HOMEMLPROB):.2f}\n'
+        output += f'Home Spread: {spread_prob - self.convertline(HOMESPREADPROB):.2f}\n\n'
+        output += f'Away ML: {(1 - prob) - self.convertline(AWAYMLPROB):.2f}\n'
+        output += f'Away Spread: {(1 - spread_prob) - self.convertline(AWAYSPREADPROB):.2f}\n'
+
+        self.text_output.insert(tk.END, output)
+        self.text_output.yview(tk.END)
+
+    def convertline(self, line):
+        if line < 0:
+            line *= -1
+            return line / (100 + line)
+        else:
+            return (100 / (100 + line))
 
     def run(self):
         self.window.mainloop()

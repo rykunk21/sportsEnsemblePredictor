@@ -9,8 +9,12 @@ from collections import UserDict
 from bs4 import BeautifulSoup
 from typing import Any, Iterator, TypeVar, Dict
 import datetime
-import util
 
+from . import util
+
+import pickle
+import os
+import json
 
 
 class Scraper:
@@ -383,11 +387,11 @@ class NCAABTeamScraper(Scraper):
         and retrieves the team statistics table.
         """
         self.ncaabTeamsUrl = f'https://www.sports-reference.com/cbb/seasons/men/{year}-school-stats.html'
-        tableId = 'basic_school_stats'
+        self.tableId = 'basic_school_stats'
 
         super().__init__()
         self.visit(self.ncaabTeamsUrl)
-        self.table = self.getTable(tableId)
+        self.table = self.getTable(self.tableId)
     
     def getTable(self, tableID: str) -> Scraper.Table:
         """
@@ -411,11 +415,15 @@ class NCAABTeamScraper(Scraper):
         ]
 
 class NCAABPlayerScraper(Scraper):
-        def __init__(self, playerName):
+        def __init__(self, playerName, link=None):
             self.playerName = playerName
             super().__init__()
 
-            self.playerUrl = f'https://www.sports-reference.com/cbb/players/{playerName}/gamelog/2024/'
+            if link is None:
+                self.playerUrl = f'https://www.sports-reference.com/cbb/players/{playerName}/gamelog/2024/'
+
+            else:
+                self.playerUrl = link
 
             self.tableID = 'gamelog'
             
@@ -480,7 +488,7 @@ class NCAABRosterScraper(Scraper):
         pattern = lambda x: x.th.get('scope') != 'row'
         table.drop(pattern)
 
-        pattern = lambda x: [(str(data.text), 'https://www.sports-reference.com' + data['href'])for data in x.find_all('a', limit=1)]
+        pattern = lambda x: [(str(data.text), 'https://www.sports-reference.com{}/gamelog/2024'.format(data['href'].split('.')[0])) for data in x.find_all('a', limit=1)]
         table.format(pattern) 
 
         return table
@@ -515,6 +523,95 @@ class NCAABRosterScraper(Scraper):
 
         return links
 
+class LineScraper(Scraper):
+
+    class LineSet:
+        def __init__(self, data:tuple) -> None:
+            self.name = data[0].split('(')[0].strip().replace(' ', '-')
+            self.side = data[1]
+            self.spread = float(data[2])
+            self.spreadOdds = int(data[3])
+            self.mlOdds = int(data[4])
+
+        def __str__(self) -> str:
+            return f'{self.name}: {self.spread}'
+        
+        def __repr__(self) -> str:
+            return self.__str__()
+
+
+    def __init__(self, home=None, away=None):
+
+        super().__init__()
+        self.LinesUrl = f'https://www.scoresandodds.com/ncaab'
+
+        self.visit(self.LinesUrl) 
+
+        self.table = self.getTable()
+
+        with open('./datasets/ncaab/mapping.json', 'r') as fp:
+            self.mappings = json.load(fp)
+       
+
+        if not (home is None and away is None):
+            self.home = self.entry(home)
+            self.away = self.entry(away)
+
+    def _teams_are_set(self):
+        return hasattr(self, 'home') and hasattr(self, 'away')
+
+    def getTable(self) -> Scraper.Table:
+        
+        def extract(row):
+            name = row.select_one('td div span.team-name a span').text.strip().lower()
+            side = row['data-side']
+            current_spread = row.select_one('td[data-field="current-spread"] span.data-value')
+            current_spread_odds = row.select_one('td[data-field="current-spread"] small.data-odds')
+            moneyline_odds = row.select_one('td[data-field="current-moneyline"] span.data-value')
+
+            current_spread = current_spread.text.strip() if current_spread else None
+            current_spread_odds = current_spread_odds.text.strip() if current_spread_odds else None
+            moneyline_odds = moneyline_odds.text.strip() if moneyline_odds else None
+
+            return (name, side, current_spread, current_spread_odds, moneyline_odds)
+
+
+        table_html = self.soup.find(class_="container")
+        table = Scraper.Table(table_html) if table_html else None
+
+        pattern = lambda x: 'event-card-header' in x['class']
+        table.drop(pattern)
+
+        table.format(extract)
+
+        pattern = lambda x: any(elem is None for elem in x)
+        table.drop(pattern)
+
+        pattern = lambda x: self.LineSet(x)
+        table.format(pattern)
+
+        return table
+
+    def entry(self, name) -> LineSet:
+
+        for entry in self.table.rows:
+            if name == entry.name or self.mappings.get(entry.name) == name:
+                return entry
+
+        raise Exception(f'Teamname {name} not found in lines!')
+
+    def spread(self):
+       
+        return self.home.spread
+
+    def getMoneyLineOdds(self) -> tuple[int, int]:
+      
+        return self.home.mlOdds, self.away.mlOdds
+
+
+    def getSpreadOdds(self) -> tuple[int, int]:
+        return self.home.mlOdds, self.away.mlOdds
+
 """
 SPECIAL HANDLERS
 
@@ -536,27 +633,38 @@ class simHandler(Handler):
     """
     Data handler for simulation
     """
-    db = None
 
-
+    # Class data memebers
+    teamsDir = 'test/teams' 
+    
     class simPreprocessor(Preprocessor):
         pass
 
-    def __init__(self, db=None):
+    def __init__(self):
 
-        if not db:
-            super().__init__(self.db)
-        else:
-            super().__init__(db)
-
-
+        pass
 
     @classmethod
     def getTeam(cls, teamName: str) -> util.Team:
         """
         Query the database for a particular team
         """
-        return teamName
+        file = os.path.join(cls.teamsDir, f'{teamName}.pkl')
+
+        if not os.path.exists(file):
+            raise Exception(f'The team {teamName} does not exist!!')
+
+        with open(file, 'rb') as fp:
+            players = pickle.load(fp)
+            return {teamName: players}
+        
+    @classmethod
+    def updateTeam(cls, teamName):
+
+        team = cls.getTeam(teamName)
+
+        url = 'https://www.sports-reference.com/cbb/schools/michigan-state/men/2024-gamelogs.html'
+        pass
 
 
 class powerHandler(Handler):
