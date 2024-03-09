@@ -664,7 +664,7 @@ class LineScraper(Scraper):
 
         pattern = lambda x: any(elem is None for elem in x)
         table.drop(pattern)
-
+        
         pattern = lambda x: self.LineSet(x)
         table.format(pattern)
 
@@ -686,9 +686,104 @@ class LineScraper(Scraper):
       
         return self.home.mlOdds, self.away.mlOdds
 
-
     def getSpreadOdds(self) -> tuple[int, int]:
-        return self.home.mlOdds, self.away.mlOdds
+        return self.home.spreadOdds, self.away.spreadOdds
+
+    def getTodaysGames(self) -> list[str]:
+
+        games = []
+        for i in range(len(self.table.rows))[::2]:
+            game = (self.table.rows[i], self.table.rows[i+1])
+            games.append(game)
+
+        return games
+
+    def getGame(self, team=None):
+        if team is None:
+            return self.home, self.away
+
+class GameScraper(Scraper):
+
+    def __init__(self, gamePage):
+        super().__init__()
+        self.visit(gamePage)
+
+        self.home, self.away = self.generateTables() 
+
+    def getTables(self):
+        boxes = self.soup.find(id='boxes')
+
+        away, home = list(boxes.find_all('table'))[::2]
+
+        home = Scraper.Table(home)
+        away = Scraper.Table(away)
+
+                
+        pattern = lambda x: x.th.get('scope') != 'row'
+        home.drop(pattern)
+        away.drop(pattern)
+
+        pattern = lambda x: [str(data.text) for data in x.find_all(['th', 'td'])]
+        home.format(pattern) 
+        away.format(pattern)
+
+        pattern = lambda x: x[0] == 'School Totals'
+        home.drop(pattern)
+        away.drop(pattern)
+
+        pattern = lambda x: {x[0]: x[1:]}
+        home.format(pattern)
+        away.format(pattern)
+
+
+        return away, home
+
+
+    def generateTables(self): #TODO
+        wrapper = self.soup.find(class_='scorebox')
+
+        away, home =  [elem.find('a')['href'] for elem in wrapper.find_all('strong')]
+
+        away = away.split('/')[3]
+        home = home.split('/')[3]
+        
+        awayTable, homeTable = self.getTables()
+
+        awayScore, homeScore = [int(data.text) for data in wrapper.find_all(class_='score')]
+
+        date = wrapper.find(class_='scorebox_meta').find('div').text
+        date = datetime.strptime(date, '%B %d, %Y')
+        # Format the datetime object to the desired output format
+        date = date.strftime('%Y-%m-%d')
+
+        homeWine = "W" if homeScore > awayScore else "L"
+        awayWin = "W" if awayScore > homeScore else "L"
+
+        homePrepend = [date, home, 'H', away, 'REG', homeWine, None]
+        awayPrepend = [date, away, '@', home, 'REG', awayWin, None]
+        
+        for player in awayTable.rows:
+            name, stats = list(player.items())[0]
+            stats = awayPrepend + stats
+            player[name] = stats
+            
+        for player in homeTable.rows:
+            name, stats = list(player.items())[0]
+            stats = homePrepend + stats
+            player[name] = stats
+
+        awayMerged = {}
+        homeMerged = {}
+        for row in awayTable.rows:
+            awayMerged.update(row)
+        for row in homeTable.rows:
+            homeMerged.update(row)
+
+        away = {away: awayMerged}
+        home = {home: homeMerged}
+        
+        return home, away
+
 
 """
 SPECIAL HANDLERS
@@ -734,16 +829,88 @@ class simHandler(Handler):
 
         with open(file, 'rb') as fp:
             players = pickle.load(fp)
-            return {teamName: players}
+            if players.get(teamName):
+                return players
+            else:
+                return {teamName: players}
         
     @classmethod
     def updateTeam(cls, teamName):
+        
+        teamSc = NCAABTeamScraper(teamName)
+        team = simHandler.getTeam(teamName)
+        teamName = list(team.keys())[0]
+        
+        links = teamSc.gameLinks()
+        schedule = teamSc.getSchedule()
 
-        team = cls.getTeam(teamName)
+        updates = []
+        
+        if list(team[teamName].keys())[0] == teamName:
+            # TOO MUCH NESTING
+            team = team[teamName]
 
-        url = 'https://www.sports-reference.com/cbb/schools/michigan-state/men/2024-gamelogs.html'
-        pass
+        for player, stats in team[teamName].items():
+            
+            if len(stats.rows) >= 1:
+            
+                pattern = lambda x: 'Games' in x[0]
+                stats.drop(pattern)
 
+                playerLastUpdate = stats.rows[-1][0]
+                playerLastUpdate = datetime.strptime(playerLastUpdate, '%Y-%m-%d').date()
+                updates.append((player, playerLastUpdate))
+
+        mostCurrent = max([update[1] for update in updates])
+
+        updateQueue = [(datetime.strptime(row[0], '%Y-%m-%d').date(), row[2]) for row in schedule[0] if datetime.strptime(row[0], '%Y-%m-%d').date() > mostCurrent]
+        
+        if len(updateQueue) == 0:
+            with open(f'test/teams/{teamName}.pkl', 'wb') as file:
+                pickle.dump(team, file)
+                print(f'updated team {teamName}')
+
+
+        for row in links.rows:
+            date, link, oppTeam = row[0][0], row[0][1], row[1]
+            
+            if (date, oppTeam) in updateQueue:
+                gs = GameScraper(link)
+
+                homeUpdates, awayUpdates = gs.generateTables()
+
+                if teamName in list(homeUpdates.keys()):
+                    homeTeamName = teamName
+                    awayTeamName = list(awayUpdates.keys())[0]
+                    away = simHandler.getTeam(awayTeamName)
+                    home = team
+                elif teamName in list(awayUpdates.keys()):
+                    homeTeamName = list(homeUpdates.keys())[0]
+                    awayTeamName = teamName
+                    home = simHandler.getTeam(homeTeamName)
+                    away = team
+                else:
+                    raise Exception('Could not find teamname in updates')
+
+                for player, update in homeUpdates[homeTeamName].items():
+                    if home[homeTeamName].get(player):
+                        home[homeTeamName][player].rows.append(update)
+                
+                for player, update in awayUpdates[awayTeamName].items():
+                    if away[awayTeamName].get(player):
+                        away[awayTeamName][player].rows.append(update)
+                
+                with open(f'test/teams/{homeTeamName}.pkl', 'wb') as file:
+                    pickle.dump(home, file)
+                    print(f'updated team {homeTeamName}')
+                with open(f'test/teams/{awayTeamName}.pkl', 'wb') as file:
+                    print(f'updated team {awayTeamName}')
+                    pickle.dump(away, file)
+
+    @classmethod
+    def exists(cls, teamName):
+        file = os.path.join(cls.teamsDir, f'{teamName}.pkl')
+        return os.path.exists(file)
 
 class powerHandler(Handler):
     """

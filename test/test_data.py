@@ -4,19 +4,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 from src.Lib.util import Game
 from datetime import datetime
-
+import pickle
 
 from scipy.optimize import curve_fit
 from scipy.stats import poisson
 
 
 def test_LineScraper():
-    
+
     ls = data.LineScraper()
     if ls._teams_are_set():
         spread = ls.spread()
         home_ml_odds, away_ml_odds = ls.getMoneyLineOdds()
         home_spread_odds, away_spread_odds = ls.getSpreadOdds()
+
+    games = ls.getTodaysGames()
 
 def test_data():
     # Test with positive numbers
@@ -108,30 +110,8 @@ def test_NCAABRosterScraper():
 
 def test_NCAABRosterScraperUpdate():
 
-    teamName = 'penn-state'
-    teamSc = data.NCAABTeamScraper(teamName)
-    home = data.simHandler.getTeam(teamName)
-
-    links = teamSc.gameLinks()
-    schedule = teamSc.getSchedule()
-
-    updates = []
-    
-    for player, stats in home[teamName].items():
-        if len(stats.rows) >= 1:
-            playerLastUpdate = stats.rows[-2][0]
-            playerLastUpdate = datetime.strptime(playerLastUpdate, '%Y-%m-%d').date()
-            updates.append((player, playerLastUpdate))
-
-    mostCurrent = max([update[1] for update in updates])
-
-    updateQueue = [(datetime.strptime(row[0], '%Y-%m-%d').date(), row[2]) for row in schedule[0] if datetime.strptime(row[0], '%Y-%m-%d').date() > mostCurrent]
-
-    for row in links.rows:
-        date, link, oppTeam = row[0][0], row[0][1], row[1]
-        
-        if (date, oppTeam) in updateQueue:
-            print(link)
+    teamName = 'florida'
+    data.simHandler.updateTeam(teamName)
 
 def test_DataBase():
     db = data.DataBase('./test/resources/testDB.db')

@@ -1,13 +1,15 @@
 import tkinter as tk
 from src.Lib.gui import GUI
 from src.Lib.simulation import MonteCarlo
-from src.Lib.util import Game, convertline
-from src.Lib.data import LineScraper, NCAABRosterScraper, NCAABPlayerScraper
+from src.Lib.util import printGameResult
+from src.Lib.data import LineScraper, NCAABRosterScraper, NCAABPlayerScraper, simHandler
+
 import numpy as np
 import random
 import time
 import os
 import pickle
+import json
 
 def main(args):
     # Check the provided subcommand
@@ -23,47 +25,14 @@ def main(args):
         prob, spreads = sim.run(10000)
 
         ls = LineScraper(args.home, args.away)
+        game = ls.getGame()
 
         spread = ls.spread()
-        home_ml_odds, away_ml_odds = ls.getMoneyLineOdds()
-        home_spread_odds, away_spread_odds = ls.getSpreadOdds()
-
         spreadProb = sim.probability_of_value(spreads, spread)
-        home_team = sim.game.home
-        away_team = sim.game.away
+        simResults = (np.mean(spreads), spreadProb, prob)
 
-        fieldWidth = max(
-            len(home_team + ' cover:'), 
-            len(home_team + ' ML:'), 
-            len(away_team + ' cover'), 
-            len(away_team + ' ML:'),
-            len(f'Spread {np.mean(spreads):.2f}')
-        )
-       
+        printGameResult(game, simResults)
 
-        print('-' * (fieldWidth + 30))
-        print('{:^{width}}|{:^15}|{:^15}'.format(f'Spread {np.mean(spreads):.2f}', 'Prob', 'Diff', width=fieldWidth))
-        print('-' * (fieldWidth + 30))  # Adjust the total width as needed
-
-        print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
-            f'{home_team} cover:', spreadProb, 
-            spreadProb - convertline(home_spread_odds), width=fieldWidth)
-        )
-        
-        print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
-            f'{home_team} ML:', prob, 
-            prob - convertline(home_ml_odds), width=fieldWidth)
-        )
-        
-        print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
-            f'{away_team} cover', 1 - spreadProb, 
-            (1 - spreadProb) - convertline(away_spread_odds), width=fieldWidth)
-        )
-        
-        print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
-            f'{away_team} ML:', 1 - prob, 
-            (1 - prob) - convertline(away_ml_odds), width=fieldWidth)
-        )
 
 
     elif args.command == 'pull':
@@ -84,7 +53,7 @@ def main(args):
             for link in team.getLinks():
                 name, link = link[0]
 
-                time.sleep(45 + random.uniform(0, 30)) 
+                time.sleep(15 + random.uniform(0, 10)) 
                 try:
                     scraper = NCAABPlayerScraper(name, link)
                     print(f'Scraped {teamName} player: {name}')
@@ -95,3 +64,57 @@ def main(args):
 
             with open(f'test/teams/{teamName}.pkl', 'wb') as file:
                 pickle.dump(teamTable, file)
+
+
+    elif args.command == 'update':
+        
+        teams = args.teams
+        
+        
+        if teams == ['.']:
+            for filename in os.listdir('./test/teams'):
+                team = filename.split('.')[0]
+                print(f'UPDATING TEAM {team}')
+                team = simHandler.updateTeam(team)
+            
+        else:
+            for team in teams:
+                simHandler.updateTeam(team)
+
+
+    elif args.command == 'slate':
+
+        games = LineScraper().getTodaysGames()
+
+        results = []
+
+        with open('./datasets/ncaab/mapping.json', 'r') as fp:
+            mappings = json.load(fp)
+        
+        for home, away in games:
+            print(f"Running simulator with args: {home.name}, {away.name}")
+            if not simHandler.exists(home.name):
+                if mappings.get(home.name):
+                    home.name = mappings.get(home.name)
+                else:
+                    print(f'{home.name} not in known teams')
+                    continue
+            if not simHandler.exists(away.name):
+                if mappings.get(home.name):
+                    away.name = mappings.get(away.name)
+                else:
+                    print(f'{away.name} not in known teams')
+                    continue
+            
+            game = (home, away)
+            sim = MonteCarlo(home.name, away.name)
+            prob, spreads = sim.run(10000)
+
+            spread = home.spread
+
+            spreadProb = sim.probability_of_value(spreads, spread)
+            simResults = (np.mean(spreads), spreadProb, prob)
+
+            results.append((home, away, simResults))
+
+            printGameResult(game, simResults)

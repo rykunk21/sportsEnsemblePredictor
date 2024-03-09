@@ -22,6 +22,12 @@ def main():
     pull_parser = subparsers.add_parser('pull', help='Pull data with additional arguments')
     pull_parser.add_argument('teams', nargs='+', type=str, help='List of team numbers for pull command')
 
+
+    update_parser = subparsers.add_parser('update', help='Update the existing list of teams or omit args to update all')
+    update_parser.add_argument('teams', nargs='+', type=str, help='list of teams you wish ot update')
+
+    update_parser = subparsers.add_parser('slate', help='Run a whole slate')
+
     # Parse the arguments
     args = parser.parse_args()
 

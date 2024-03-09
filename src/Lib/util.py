@@ -56,17 +56,23 @@ class Game:
 
             if name in self.homeRoster.keys():
                 player = self.homeRoster.get(name)
+                # DROP TOTALS
+                pattern = lambda x: 'Games' in x[0]
+                player.drop(pattern)
+
                 return [int(row[-1]) if not np.isnan(int(row[-1])) else 0 for row in player.rows][:-1]
     
             elif name in self.awayRoser.keys():
                 player = self.awayRoser.get(name)
+                pattern = lambda x: 'Games' in x[0]
+                player.drop(pattern)
                 return [int(row[-1]) if not np.isnan(int(row[-1])) else 0 for row in player.rows][:-1]
             
             else:
                 raise Exception(f'Player {name} not playing in this game!!!')
             
 
-def convertline(line):
+def convertLine(line):
     if line < 0:
         line *= -1
         return line/ (100 + line)
@@ -80,6 +86,71 @@ def invertLine(prob):
         return f'+{(100 / prob) - 100}'
 
 
+
+def printGameResult(game, simProbs):
+
+    """
+    simProbs
+
+    0: mean spread
+    1: home spread prob
+    2: home ml prob
+    """
+
+    home = game[0]
+    away = game[1]
+    home_team = home.name
+    away_team = away.name
+
+    home_ml_odds = home.mlOdds
+    home_spread_odds = home.spreadOdds
+
+    away_ml_odds = away.mlOdds
+    away_spread_odds = away.spreadOdds
+
+
+
+    fieldWidth = max(
+        len(home_team + ' cover:'), 
+        len(home_team + ' ML:'), 
+        len(away_team + ' cover'), 
+        len(away_team + ' ML:'),
+        len(f'Spread {simProbs[0]:.2f}')
+    )
+
+
+    print('-' * (fieldWidth + 30))
+    print('{:^{width}}|{:^15}|{:^15}'.format(f'Spread {simProbs[0]:.2f}', 'Prob', 'Diff', width=fieldWidth))
+    print('-' * (fieldWidth + 30))  # Adjust the total width as needed
+
+    print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
+        f'{home_team} cover:', simProbs[1], 
+        simProbs[1] - convertLine(home_spread_odds), width=fieldWidth)
+    )
+
+    print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
+        f'{home_team} ML:', simProbs[2], 
+        simProbs[2] - convertLine(home_ml_odds), width=fieldWidth)
+    )
+
+    print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
+        f'{away_team} cover', 1 - simProbs[1], 
+        (1 - simProbs[1]) - convertLine(away_spread_odds), width=fieldWidth)
+    )
+
+    print('{:<{width}}|{:^15.2f}|{:^15.2f}'.format(
+        f'{away_team} ML:', 1 - simProbs[2], 
+        (1 - simProbs[2]) - convertLine(away_ml_odds), width=fieldWidth)
+    )
+
+
+
+
+
+class SimResult:
+
+    def __init__(self) -> None:
+        pass
 
 
 

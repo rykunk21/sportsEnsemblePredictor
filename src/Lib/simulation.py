@@ -24,7 +24,7 @@ class MonteCarlo:
         
 
     def run(self, simulations):
-
+        
         
         homePoints = []
         for player in self.homeRoster:
@@ -38,6 +38,7 @@ class MonteCarlo:
 
         awayPoints = []
         for player in self.awayRoster:
+
             points = self.game.getPlayerPoints(player)
             
             mean = np.mean(points)

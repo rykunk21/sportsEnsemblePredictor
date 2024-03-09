@@ -20,15 +20,15 @@ def test_monteCarlo():
     Define distributions for each random variable, and sample from an equation
     """
     
-    SPREAD = 6.5
-    HOMEMLPROB = +230
-    HOMESPREADPROB = -105
+    SPREAD = -5
+    HOMEMLPROB = -245
+    HOMESPREADPROB = -115
 
-    AWAYMLPROB = -285
-    AWAYSPREADPROB = -115
+    AWAYMLPROB = +200
+    AWAYSPREADPROB = -105
 
-    HOME = 'miami-fl'
-    AWAY = 'duke'
+    HOME = 'marquette'
+    AWAY = 'connecticut'
 
     home_team = HOME
     away_team = AWAY
