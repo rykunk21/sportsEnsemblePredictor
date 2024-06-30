@@ -1,26 +1,15 @@
 # Virtual environment
 env/
 
-# Build outputs
-build/
-dist/
-
-# Caches
-__pycache__/
-.pytest_cache/
+# Build
+target/
 
 # IDE settings
 .vscode/
 
 # Miscellaneous
 temp/
+startdb.sh
 
-# Data
-datasets/
-test/resources/
-grok/
-test/teams/
-
-teams39.txt
-teams39update.txt
-open.py
+# config
+config.json
